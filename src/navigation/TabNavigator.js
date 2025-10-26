@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/HomeScreen';
+import MapScreen from '../screens/MapScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { colors } from '../config/colors';
 
@@ -16,6 +17,8 @@ const TabNavigator = () => (
 
         if (route.name === 'Home') {
           iconName = focused ? 'home' : 'home-outline';
+        } else if (route.name === 'Map') {
+          iconName = focused ? 'map' : 'map-outline';
         } else if (route.name === 'Profile') {
           iconName = focused ? 'person' : 'person-outline';
         }
@@ -49,6 +52,13 @@ const TabNavigator = () => (
       component={HomeScreen}
       options={{
         tabBarLabel: 'Home',
+      }}
+    />
+    <Tab.Screen 
+      name="Map" 
+      component={MapScreen}
+      options={{
+        tabBarLabel: 'Map',
       }}
     />
     <Tab.Screen 
