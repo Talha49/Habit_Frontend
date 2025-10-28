@@ -4,15 +4,21 @@ import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './src/routes/AppNavigator';
 import { AuthProvider } from './src/context/AuthContext';
 import { LocationProvider } from './src/context/LocationContext';
+import { CategoryProvider } from './src/context/CategoryContext';
+import { TerritoryProvider } from './src/context/TerritoryContext';
 
 export default function App() {
   return (
     <AuthProvider>
       <LocationProvider>
-        <NavigationContainer>
-          <AppNavigator />
-          <StatusBar style="auto" />
-        </NavigationContainer>
+        <CategoryProvider>
+          <TerritoryProvider>
+            <NavigationContainer>
+              <AppNavigator />
+              <StatusBar style="auto" />
+            </NavigationContainer>
+          </TerritoryProvider>
+        </CategoryProvider>
       </LocationProvider>
     </AuthProvider>
   );
