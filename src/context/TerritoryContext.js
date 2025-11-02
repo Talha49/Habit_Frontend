@@ -40,6 +40,34 @@ export const TerritoryProvider = ({ children }) => {
     }
   };
 
+  // Load ALL territories (not just around current location)
+  const loadAllTerritories = async (categoryId = null) => {
+    try {
+      console.log('🗺️ TerritoryContext: Loading ALL territories...');
+      setIsLoading(true);
+      setError(null);
+
+      // Use a large radius to get territories from a wide area
+      // If no categoryId provided, get all territories regardless of category
+      const result = await getTerritories(0, 0, categoryId, 1000);
+      
+      if (result.success) {
+        setTerritories(result.data);
+        console.log(`✅ TerritoryContext: Loaded ${result.count} territories globally`);
+        return result.data;
+      } else {
+        throw new Error(result.error || 'Failed to load territories');
+      }
+    } catch (err) {
+      console.error('❌ TerritoryContext: Failed to load all territories:', err.message);
+      setError(err.message);
+      setTerritories([]);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Get territory by cell ID
   const getTerritory = async (cellId) => {
     try {
@@ -172,6 +200,7 @@ export const TerritoryProvider = ({ children }) => {
     isLoading,
     error,
     loadTerritories,
+    loadAllTerritories,
     getTerritory,
     claim,
     release,

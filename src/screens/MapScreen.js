@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapContainer from '../components/map/MapContainer';
 import TerritoryGrid from '../components/map/TerritoryGrid';
+import TerritoryInfoModal from '../components/map/TerritoryInfoModal';
 import CategorySelector from '../components/CategorySelector';
 import { LocationContext } from '../context/LocationContext';
 import { useCategories } from '../context/CategoryContext';
@@ -19,6 +20,7 @@ const MapScreen = () => {
     territories, 
     isLoading: territoriesLoading, 
     loadTerritories, 
+    loadAllTerritories,
     claim, 
     release, 
     getTerritoryStatus,
@@ -26,10 +28,19 @@ const MapScreen = () => {
   } = useTerritories();
   const [currentCellId, setCurrentCellId] = useState(null);
   const [showGrid, setShowGrid] = useState(true);
+  const [selectedTerritory, setSelectedTerritory] = useState(null);
+  const [showTerritoryModal, setShowTerritoryModal] = useState(false);
 
-  // Load territories when location or category changes
+  // Load ALL territories on mount and when category changes (for global view)
+  useEffect(() => {
+    console.log('🗺️ MapScreen: Loading all territories for global view');
+    loadAllTerritories(); // Load all territories regardless of category
+  }, []);
+
+  // Load local territories when location changes (for current area)
   useEffect(() => {
     if (currentLocation && selectedCategory) {
+      console.log('🗺️ MapScreen: Loading local territories for current area');
       loadTerritoriesForLocation();
     }
   }, [currentLocation, selectedCategory]);
@@ -65,9 +76,9 @@ const MapScreen = () => {
       );
       Alert.alert('Success', 'Territory claimed successfully!');
       
-      // Reload territories to ensure UI updates
+      // Reload all territories to show the new claim globally
       setTimeout(() => {
-        loadTerritoriesForLocation();
+        loadAllTerritories();
       }, 500);
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to claim territory');
@@ -84,9 +95,9 @@ const MapScreen = () => {
       await release(currentCellId, user.id);
       Alert.alert('Success', 'Territory released successfully!');
       
-      // Reload territories to ensure UI updates
+      // Reload all territories to update the global view
       setTimeout(() => {
-        loadTerritoriesForLocation();
+        loadAllTerritories();
       }, 500);
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to release territory');
@@ -100,6 +111,7 @@ const MapScreen = () => {
         currentLocation.latitude,
         currentLocation.longitude
       );
+      console.log(`📍 MapScreen: Setting currentCellId to: ${cellId}`);
       setCurrentCellId(cellId);
     }
   }, [currentLocation]);
@@ -108,16 +120,86 @@ const MapScreen = () => {
     await refreshLocation();
   };
 
+  // Territory interaction handlers
+  const handleTerritoryPress = (territory) => {
+    console.log('🏴 Territory pressed:', territory);
+    setSelectedTerritory(territory);
+    setShowTerritoryModal(true);
+  };
+
+  const handleCloseTerritoryModal = () => {
+    setShowTerritoryModal(false);
+    setSelectedTerritory(null);
+  };
+
+  const handleTerritoryClaim = async () => {
+    if (!selectedTerritory || !user || !currentLocation) return;
+    
+    try {
+      await claim(
+        selectedTerritory.cellId,
+        selectedCategory._id,
+        user.id,
+        currentLocation.latitude,
+        currentLocation.longitude
+      );
+      
+      Alert.alert('Success', 'Territory claimed successfully!');
+      setShowTerritoryModal(false);
+      
+      // Refresh all territories after claiming
+      setTimeout(() => {
+        loadAllTerritories();
+      }, 1000);
+    } catch (error) {
+      console.error('❌ Failed to claim territory:', error);
+      Alert.alert('Error', error.message || 'Failed to claim territory');
+    }
+  };
+
+  const handleTerritoryRelease = async () => {
+    if (!selectedTerritory || !user) return;
+    
+    try {
+      await release(selectedTerritory.cellId, user.id);
+      
+      Alert.alert('Success', 'Territory released successfully!');
+      setShowTerritoryModal(false);
+      
+      // Refresh all territories after releasing
+      setTimeout(() => {
+        loadAllTerritories();
+      }, 1000);
+    } catch (error) {
+      console.error('❌ Failed to release territory:', error);
+      Alert.alert('Error', error.message || 'Failed to release territory');
+    }
+  };
+
+  // Get territories for current category
+  const currentCategoryTerritories = territories.filter(t => 
+    t.categoryId && selectedCategory && t.categoryId._id === selectedCategory._id
+  );
+
+  // Get all claimed territories count
+  const allClaimedTerritories = territories.filter(t => t.status === 'claimed');
+
   return (
     <View style={styles.container}>
       <MapContainer>
         {currentCellId && (
-          <TerritoryGrid 
-            centerCellId={currentCellId}
-            radius={2}
-            showGrid={showGrid}
-          />
+          <>
+            {console.log(`🗺️ MapScreen: Rendering TerritoryGrid with currentCellId: ${currentCellId}, showGrid: ${showGrid}`)}
+              <TerritoryGrid
+                centerCellId={currentCellId}
+                radius={2}
+                showGrid={showGrid}
+                onTerritoryPress={handleTerritoryPress}
+                showAllTerritories={true} // Show all territories globally
+              />
+          </>
         )}
+        {!currentCellId && console.log(`🗺️ MapScreen: No currentCellId, not rendering TerritoryGrid`)}
       </MapContainer>
 
       {/* Category Filter */}
@@ -152,7 +234,7 @@ const MapScreen = () => {
         {/* Manual Territory Refresh Button */}
         <TouchableOpacity 
           style={styles.controlButton}
-          onPress={loadTerritoriesForLocation}
+          onPress={() => loadAllTerritories()}
         >
           <Ionicons name="reload" size={24} color={colors.secondary} />
         </TouchableOpacity>
@@ -221,8 +303,56 @@ const MapScreen = () => {
               </Text>
             </View>
           )}
+          
+          {/* Territory Statistics */}
+          <View style={styles.statsSection}>
+            <Text style={styles.statsTitle}>Territory Stats:</Text>
+            <View style={styles.statsRow}>
+              <Ionicons name="flag" size={14} color={colors.success} />
+              <Text style={styles.statsText}>
+                Total Claimed: {allClaimedTerritories.length}
+              </Text>
+            </View>
+            <View style={styles.statsRow}>
+              <Ionicons name="filter" size={14} color={selectedCategory?.color || colors.primary} />
+              <Text style={styles.statsText}>
+                {selectedCategory?.name || 'Current'} Category: {currentCategoryTerritories.length}
+              </Text>
+            </View>
+          </View>
+          
+          {/* Territory Legend */}
+              <View style={styles.legendSection}>
+                <Text style={styles.legendTitle}>Territory System:</Text>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendColorBox, { backgroundColor: selectedCategory?.color + '80' || colors.success + '80' }]} />
+                  <Text style={styles.legendText}>Claimed ({selectedCategory?.name || 'Current Category'})</Text>
+                </View>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendColorBox, { backgroundColor: colors.gray + '20' }]} />
+                  <Text style={styles.legendText}>Unclaimed</Text>
+                </View>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendColorBox, { backgroundColor: colors.primary + '30' }]} />
+                  <Text style={styles.legendText}>Your Location</Text>
+                </View>
+                <Text style={styles.legendNote}>
+                  💡 All claimed territories are visible globally. New claims use selected category.
+                </Text>
+              </View>
         </View>
       )}
+      
+      {/* Territory Info Modal */}
+      <TerritoryInfoModal
+        visible={showTerritoryModal}
+        territory={selectedTerritory}
+        onClose={handleCloseTerritoryModal}
+        onClaim={handleTerritoryClaim}
+        onRelease={handleTerritoryRelease}
+        isOwnedByUser={selectedTerritory ? isClaimedByUser(selectedTerritory.cellId, user?.id) : false}
+        user={user}
+      />
     </View>
   );
 };
@@ -293,6 +423,64 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     flex: 1,
   },
+  statsSection: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+  },
+  statsTitle: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+    gap: 6,
+  },
+  statsText: {
+    fontSize: 9,
+    color: colors.text.secondary,
+  },
+  legendSection: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+  },
+  legendTitle: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+    gap: 6,
+  },
+  legendColorBox: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+      legendText: {
+        fontSize: 9,
+        color: colors.text.secondary,
+      },
+      legendNote: {
+        fontSize: 8,
+        color: colors.text.secondary,
+        fontStyle: 'italic',
+        marginTop: 4,
+        textAlign: 'center',
+      },
 });
 
 export default MapScreen; 
