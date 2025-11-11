@@ -2,6 +2,7 @@ import axios from 'axios';
 import config from '../config';
 
 // Create axios instance with default config
+console.log('🔧 Creating API client with base URL:', config.API_BASE_URL);
 const apiClient = axios.create({
   baseURL: config.API_BASE_URL,
   timeout: 10000, // 10 seconds timeout
@@ -81,7 +82,12 @@ export const register = async (userData) => {
       throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
     }
 
-    const response = await apiClient.post('/v1/auth/register', userData);
+    const payload = {
+      ...userData,
+      role: userData.role || 'standard'
+    };
+
+    const response = await apiClient.post('/v1/auth/register', payload);
 
     if (!response.data) {
       throw new Error('Invalid response from server');
@@ -191,7 +197,7 @@ export const verifyOTP = async (email, otp) => {
   }
 };
 
-export const resetPassword = async (email, newPassword) => {
+export const resetPassword = async ({ email, newPassword, resetToken }) => {
   try {
     console.log('🔄 Reset Password API called for:', email);
 
@@ -203,9 +209,14 @@ export const resetPassword = async (email, newPassword) => {
       throw new Error('Password must be at least 8 characters long');
     }
 
+    if (!resetToken || typeof resetToken !== 'string') {
+      throw new Error('Reset token is required');
+    }
+
     const response = await apiClient.post('/v1/auth/reset-password', { 
       email: email.trim(), 
-      newPassword 
+      newPassword,
+      resetToken
     });
 
     console.log('✅ Reset Password API response:', response.data);
@@ -219,6 +230,38 @@ export const resetPassword = async (email, newPassword) => {
     console.error('❌ Reset Password API error:', error.message);
     throw error;
   }
+};
+
+export const createLinkInvite = async (payload) => {
+  const response = await apiClient.post('/v1/auth/links/invite', payload);
+  if (!response.data) {
+    throw new Error('Invalid response from server');
+  }
+  return response.data;
+};
+
+export const acceptLinkInvite = async (payload) => {
+  const response = await apiClient.post('/v1/auth/links/accept', payload);
+  if (!response.data) {
+    throw new Error('Invalid response from server');
+  }
+  return response.data;
+};
+
+export const revokeLink = async (payload) => {
+  const response = await apiClient.post('/v1/auth/links/revoke', payload);
+  if (!response.data) {
+    throw new Error('Invalid response from server');
+  }
+  return response.data;
+};
+
+export const fetchUserLinks = async (userId) => {
+  const response = await apiClient.get('/v1/auth/links', { params: { userId } });
+  if (!response.data) {
+    throw new Error('Invalid response from server');
+  }
+  return response.data;
 };
 
 

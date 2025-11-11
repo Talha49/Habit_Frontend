@@ -10,6 +10,7 @@ export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [tokens, setTokens] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sessionExpiry, setSessionExpiry] = useState(null);
 
@@ -32,30 +33,35 @@ export const AuthProvider = ({ children }) => {
           console.log('📱 AuthContext: Session expired, clearing data');
           await AsyncStorage.removeItem(SESSION_KEY);
           setSessionExpiry(null);
+          setTokens(null);
           return null;
         }
 
         console.log('📱 AuthContext: Loaded valid user session:', parsedSession.user.email);
         setSessionExpiry(parsedSession.timestamp + SESSION_DURATION);
+        setTokens(parsedSession.tokens || null);
         return parsedSession.user;
       }
     } catch (error) {
       console.error('📱 AuthContext: Error loading session:', error);
       await AsyncStorage.removeItem(SESSION_KEY);
       setSessionExpiry(null);
+      setTokens(null);
     }
     return null;
   };
 
   // Save user session to storage
-  const saveUserSession = async (userData) => {
+  const saveUserSession = async (userData, tokenData = null) => {
     const timestamp = Date.now();
     const sessionData = {
       user: userData,
+      tokens: tokenData,
       timestamp: timestamp,
     };
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     setSessionExpiry(timestamp + SESSION_DURATION);
+    setTokens(tokenData);
   };
 
   useEffect(() => {
@@ -104,10 +110,10 @@ export const AuthProvider = ({ children }) => {
       console.log('🔐 AuthContext: Login successful, setting user:', res.user);
 
       setUser(res.user);
-      await saveUserSession(res.user);
+      await saveUserSession(res.user, res.tokens);
 
       console.log('✅ AuthContext: User state updated, navigation should trigger');
-      return { success: true };
+      return { success: true, tokens: res.tokens };
     } catch (err) {
       console.error('❌ AuthContext: Login failed:', err.message);
       return { success: false, error: err.message || 'Login failed' };
@@ -144,13 +150,14 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log('🔍 AuthContext: Verifying OTP for:', email, isRegistration ? '(registration)' : '(login)');
       const res = await authApi.verifyOTP(email, otp);
-      console.log('✅ AuthContext: OTP verification successful, setting user:', res.user);
+      console.log('✅ AuthContext: OTP verification response:', res);
 
-      setUser(res.user);
-      await saveUserSession(res.user);
+      if (res && res.user && res.tokens && !res.isPasswordReset) {
+        setUser(res.user);
+        await saveUserSession(res.user, res.tokens);
+      }
 
-      console.log('✅ AuthContext: User state updated after OTP verification');
-      return { success: true };
+      return { success: true, ...res };
     } catch (err) {
       console.error('❌ AuthContext: OTP verification failed:', err.message);
       return { success: false, error: err.message };
@@ -161,6 +168,7 @@ export const AuthProvider = ({ children }) => {
     console.log('🚪 AuthContext: Logging out user');
     setUser(null);
     setSessionExpiry(null);
+    setTokens(null);
     await AsyncStorage.removeItem(SESSION_KEY);
     console.log('✅ AuthContext: User logged out, navigation should trigger');
   };
@@ -171,9 +179,58 @@ export const AuthProvider = ({ children }) => {
     return Math.max(0, sessionExpiry - now);
   };
 
+  const createLinkInvite = async ({ linkType, expiresInMinutes }) => {
+    if (!user) {
+      throw new Error('User not logged in');
+    }
+    const response = await authApi.createLinkInvite({
+      userId: user.id,
+      linkType,
+      expiresInMinutes
+    });
+    return response.invite;
+  };
+
+  const acceptLinkInvite = async (inviteCode) => {
+    if (!user) {
+      throw new Error('User not logged in');
+    }
+    const response = await authApi.acceptLinkInvite({
+      inviteCode,
+      userId: user.id
+    });
+    if (response.link?.linkedUser?.id === user.id && response.link?.linkedUser.role) {
+      // Refresh session with updated role if needed
+      const updatedUser = { ...user, role: response.link.linkedUser.role };
+      setUser(updatedUser);
+      await saveUserSession(updatedUser, tokens);
+    }
+    return response.link;
+  };
+
+  const revokeLink = async (linkId) => {
+    if (!user) {
+      throw new Error('User not logged in');
+    }
+    const response = await authApi.revokeLink({
+      linkId,
+      userId: user.id
+    });
+    return response.link;
+  };
+
+  const loadUserLinks = async () => {
+    if (!user) {
+      throw new Error('User not logged in');
+    }
+    const response = await authApi.fetchUserLinks(user.id);
+    return response.links;
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
+      tokens,
       loading,
       login,
       register,
@@ -181,7 +238,11 @@ export const AuthProvider = ({ children }) => {
       requestOTP,
       verifyOTP,
       getRemainingSessionTime,
-      sessionDuration: SESSION_DURATION
+      sessionDuration: SESSION_DURATION,
+      createLinkInvite,
+      acceptLinkInvite,
+      revokeLink,
+      loadUserLinks
     }}>
       {children}
     </AuthContext.Provider>

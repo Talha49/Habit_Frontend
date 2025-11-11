@@ -1,6 +1,6 @@
 
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
@@ -15,10 +15,17 @@ const RegisterScreen = ({ navigation }) => {
     password: '',
     confirmPassword: '',
     professional: '',
+    role: 'child',
   });
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [loading, setLoading] = useState(false);
+
+  const roleOptions = [
+    { value: 'child', label: 'Player', description: 'Standard account for everyday use' },
+    { value: 'parent', label: 'Parent/Guardian', description: 'Monitor linked child accounts' },
+    { value: 'doctor', label: 'Doctor', description: 'Review patient progress reports' },
+  ];
 
   const handleChange = (key, value) => {
     setForm({ ...form, [key]: value });
@@ -26,6 +33,14 @@ const RegisterScreen = ({ navigation }) => {
     // Clear error when user starts typing
     if (errors[key]) {
       setErrors({ ...errors, [key]: '' });
+    }
+  };
+
+  const handleRoleSelect = (value) => {
+    setForm(prev => ({ ...prev, role: value }));
+    setTouched(prev => ({ ...prev, role: true }));
+    if (errors.role) {
+      setErrors(prev => ({ ...prev, role: '' }));
     }
   };
 
@@ -77,6 +92,14 @@ const RegisterScreen = ({ navigation }) => {
         }
         break;
 
+      case 'role':
+        if (!value) {
+          error = 'Please select an account role';
+        } else if (!roleOptions.find(option => option.value === value)) {
+          error = 'Invalid account role selection';
+        }
+        break;
+
       case 'password':
         if (!value) {
           error = 'Password is required';
@@ -106,7 +129,7 @@ const RegisterScreen = ({ navigation }) => {
   };
 
   const validateForm = () => {
-    const fields = ['fullName', 'phone', 'email', 'password', 'confirmPassword', 'professional'];
+    const fields = ['fullName', 'phone', 'email', 'password', 'confirmPassword', 'professional', 'role'];
     let isValid = true;
 
     fields.forEach(field => {
@@ -214,6 +237,42 @@ const RegisterScreen = ({ navigation }) => {
           autoCapitalize="words"
         />
 
+        <View style={styles.roleSection}>
+          <Text style={styles.roleLabel}>Account Role</Text>
+          <View style={styles.roleOptions}>
+            {roleOptions.map(option => {
+              const isSelected = form.role === option.value;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.roleOption,
+                    isSelected && styles.roleOptionSelected
+                  ]}
+                  onPress={() => handleRoleSelect(option.value)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[
+                    styles.roleOptionTitle,
+                    isSelected && styles.roleOptionTitleSelected
+                  ]}>
+                    {option.label}
+                  </Text>
+                  <Text style={[
+                    styles.roleOptionDescription,
+                    isSelected && styles.roleOptionDescriptionSelected
+                  ]}>
+                    {option.description}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {touched.role && errors.role ? (
+            <Text style={styles.roleError}>{errors.role}</Text>
+          ) : null}
+        </View>
+
         <Input
           label="Password"
           placeholder="Create a strong password"
@@ -292,6 +351,52 @@ const styles = StyleSheet.create({
   },
   form: {
     width: '100%',
+  },
+  roleSection: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  roleLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: 8,
+  },
+  roleOptions: {
+    gap: 12,
+  },
+  roleOption: {
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: colors.background.secondary,
+  },
+  roleOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  roleOptionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  roleOptionTitleSelected: {
+    color: colors.primary,
+  },
+  roleOptionDescription: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginTop: 4,
+  },
+  roleOptionDescriptionSelected: {
+    color: colors.text.primary,
+  },
+  roleError: {
+    marginTop: 6,
+    fontSize: 12,
+    color: colors.error,
   },
   registerButton: {
     marginTop: 24,

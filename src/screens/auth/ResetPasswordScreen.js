@@ -13,6 +13,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState('otp'); // 'otp' or 'password'
+  const [resetToken, setResetToken] = useState(null);
 
   const validateOTP = (otpValue) => {
     if (!otpValue.trim()) {
@@ -56,7 +57,12 @@ const ResetPasswordScreen = ({ navigation, route }) => {
     setErrors({});
 
     try {
-      await verifyOTP(email, otp);
+      const response = await verifyOTP(email, otp);
+      if (!response.success || !response.isPasswordReset || !response.passwordResetToken) {
+        setErrors({ otp: 'Unexpected response from server. Please request a new code.' });
+        return;
+      }
+      setResetToken(response.passwordResetToken);
       setStep('password');
     } catch (error) {
       setErrors({ otp: error.message || 'Invalid OTP' });
@@ -81,11 +87,25 @@ const ResetPasswordScreen = ({ navigation, route }) => {
     setErrors({});
 
     try {
-      await resetPassword(email, newPassword);
+      if (!resetToken) {
+        setErrors({ general: 'Reset token missing. Please restart the reset process.' });
+        return;
+      }
+
+      const response = await resetPassword({ email, newPassword, resetToken });
       Alert.alert(
         'Success',
         'Your password has been reset successfully!',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        [{
+          text: 'OK',
+          onPress: () => {
+            if (response?.user) {
+              navigation.navigate('Login');
+            } else {
+              navigation.navigate('Login');
+            }
+          }
+        }]
       );
     } catch (error) {
       setErrors({ general: error.message || 'Failed to reset password' });
