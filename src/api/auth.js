@@ -264,4 +264,18 @@ export const fetchUserLinks = async (userId) => {
   return response.data;
 };
 
+export const fetchCurrentUser = async (authToken) => {
+  try {
+    const headers = authToken
+      ? { Authorization: `Bearer ${authToken}` }
+      : {};
+
+    const response = await apiClient.get('/v1/auth/me', { headers });
+    return response.data;
+  } catch (error) {
+    console.error('❌ Fetch current user failed:', error.message);
+    throw error;
+  }
+};
+
 

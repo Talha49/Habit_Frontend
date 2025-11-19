@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "forceConsistentCasingInFileNames": false
+  },
+  "include": [
+    "App.js",
+    "index.js",
+    "src/**/*"
+  ]
+}
+
+
+
+
+
+

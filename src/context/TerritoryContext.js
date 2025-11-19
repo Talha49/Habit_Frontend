@@ -1,18 +1,70 @@
-import React, { createContext, useState, useContext } from 'react';
-import { 
-  getTerritories, 
-  getTerritoryByCellId, 
-  claimTerritory, 
-  releaseTerritory, 
-  updateTerritoryActivity 
+import React, { createContext, useState, useContext, useMemo, useCallback } from 'react';
+import {
+  getTerritories,
+  getTerritoryByCellId,
+  claimTerritory,
+  releaseTerritory,
+  updateTerritoryActivity
 } from '../api/territories';
 
 export const TerritoryContext = createContext();
 
+const sortTerritories = (territoryMap) => {
+  return Object.values(territoryMap).sort((a, b) => {
+    const aTime = new Date(a?.lastActivity || a?.updatedAt || 0).getTime();
+    const bTime = new Date(b?.lastActivity || b?.updatedAt || 0).getTime();
+    return bTime - aTime;
+  });
+};
+
 export const TerritoryProvider = ({ children }) => {
-  const [territories, setTerritories] = useState([]);
+  const [territoryMap, setTerritoryMap] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const upsertTerritories = useCallback((entries) => {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return;
+    }
+
+    setTerritoryMap((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      entries.forEach((entry) => {
+        if (!entry || !entry.cellId) {
+          return;
+        }
+
+        const existing = next[entry.cellId];
+        const existingUpdatedAt = existing?.updatedAt?.toString?.() || existing?.updatedAt || existing?.lastActivity;
+        const incomingUpdatedAt = entry?.updatedAt?.toString?.() || entry?.updatedAt || entry?.lastActivity;
+
+        if (!existing || existingUpdatedAt !== incomingUpdatedAt) {
+          next[entry.cellId] = entry;
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const removeTerritory = useCallback((cellId) => {
+    if (!cellId) {
+      return;
+    }
+    setTerritoryMap((prev) => {
+      if (!prev[cellId]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[cellId];
+      return next;
+    });
+  }, []);
+
+  const territories = useMemo(() => sortTerritories(territoryMap), [territoryMap]);
 
   // Load territories for a specific location and category
   const loadTerritories = async (latitude, longitude, categoryId = null, radius = 0.01) => {
@@ -21,10 +73,10 @@ export const TerritoryProvider = ({ children }) => {
       setIsLoading(true);
       setError(null);
 
-      const result = await getTerritories(latitude, longitude, categoryId, radius);
-      
+      const result = await getTerritories({ latitude, longitude, categoryId, radius });
+
       if (result.success) {
-        setTerritories(result.data);
+        upsertTerritories(result.data);
         console.log(`✅ TerritoryContext: Loaded ${result.count} territories`);
         return result.data;
       } else {
@@ -33,7 +85,6 @@ export const TerritoryProvider = ({ children }) => {
     } catch (err) {
       console.error('❌ TerritoryContext: Failed to load territories:', err.message);
       setError(err.message);
-      setTerritories([]);
       throw err;
     } finally {
       setIsLoading(false);
@@ -47,12 +98,10 @@ export const TerritoryProvider = ({ children }) => {
       setIsLoading(true);
       setError(null);
 
-      // Use a large radius to get territories from a wide area
-      // If no categoryId provided, get all territories regardless of category
-      const result = await getTerritories(0, 0, categoryId, 1000);
-      
+      const result = await getTerritories({ scope: 'all', categoryId });
+
       if (result.success) {
-        setTerritories(result.data);
+        upsertTerritories(result.data);
         console.log(`✅ TerritoryContext: Loaded ${result.count} territories globally`);
         return result.data;
       } else {
@@ -61,7 +110,6 @@ export const TerritoryProvider = ({ children }) => {
     } catch (err) {
       console.error('❌ TerritoryContext: Failed to load all territories:', err.message);
       setError(err.message);
-      setTerritories([]);
       throw err;
     } finally {
       setIsLoading(false);
@@ -73,8 +121,9 @@ export const TerritoryProvider = ({ children }) => {
     try {
       console.log(`🗺️ TerritoryContext: Getting territory: ${cellId}`);
       const result = await getTerritoryByCellId(cellId);
-      
+
       if (result.success) {
+        upsertTerritories([result.data]);
         console.log(`✅ TerritoryContext: Found territory: ${cellId}`);
         return result.data;
       } else {
@@ -91,32 +140,23 @@ export const TerritoryProvider = ({ children }) => {
     try {
       console.log(`🏴 TerritoryContext: Claiming territory: ${cellId}`);
       const result = await claimTerritory(cellId, categoryId, userId, latitude, longitude);
-      
+
       if (result.success) {
-        // Update local state
-        const existingTerritoryIndex = territories.findIndex(t => t.cellId === cellId);
-        
-        if (existingTerritoryIndex >= 0) {
-          // Update existing territory
-          const updatedTerritories = [...territories];
-          updatedTerritories[existingTerritoryIndex] = result.data;
-          setTerritories(updatedTerritories);
-          console.log(`✅ TerritoryContext: Updated existing territory: ${cellId}`);
-        } else {
-          // Add new territory
-          setTerritories(prevTerritories => [...prevTerritories, result.data]);
-          console.log(`✅ TerritoryContext: Added new territory: ${cellId}`);
-        }
-        
+        upsertTerritories([result.data]);
         console.log(`✅ TerritoryContext: Successfully claimed territory: ${cellId}`);
-        console.log(`📊 TerritoryContext: Current territories count: ${territories.length + (existingTerritoryIndex >= 0 ? 0 : 1)}`);
         return result.data;
       } else {
         throw new Error(result.error || 'Failed to claim territory');
       }
     } catch (err) {
       console.error('❌ TerritoryContext: Failed to claim territory:', err.message);
-      throw err;
+      const responseMessage = err?.response?.data?.error;
+      const meta = err?.response?.data?.meta;
+      const error = new Error(responseMessage || err.message || 'Failed to claim territory');
+      if (meta) {
+        error.meta = meta;
+      }
+      throw error;
     }
   };
 
@@ -125,18 +165,9 @@ export const TerritoryProvider = ({ children }) => {
     try {
       console.log(`🏴 TerritoryContext: Releasing territory: ${cellId}`);
       const result = await releaseTerritory(cellId, userId);
-      
+
       if (result.success) {
-        // Update local state
-        const existingTerritoryIndex = territories.findIndex(t => t.cellId === cellId);
-        
-        if (existingTerritoryIndex >= 0) {
-          const updatedTerritories = [...territories];
-          updatedTerritories[existingTerritoryIndex] = result.data;
-          setTerritories(updatedTerritories);
-          console.log(`✅ TerritoryContext: Updated released territory: ${cellId}`);
-        }
-        
+        upsertTerritories([result.data]);
         console.log(`✅ TerritoryContext: Successfully released territory: ${cellId}`);
         return result.data;
       } else {
@@ -144,7 +175,13 @@ export const TerritoryProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('❌ TerritoryContext: Failed to release territory:', err.message);
-      throw err;
+      const responseMessage = err?.response?.data?.error;
+      const meta = err?.response?.data?.meta;
+      const error = new Error(responseMessage || err.message || 'Failed to release territory');
+      if (meta) {
+        error.meta = meta;
+      }
+      throw error;
     }
   };
 
@@ -153,14 +190,9 @@ export const TerritoryProvider = ({ children }) => {
     try {
       console.log(`📊 TerritoryContext: Updating activity for territory: ${cellId}`);
       const result = await updateTerritoryActivity(cellId, userId);
-      
+
       if (result.success) {
-        // Update local state
-        const updatedTerritories = territories.map(territory => 
-          territory.cellId === cellId ? result.data : territory
-        );
-        
-        setTerritories(updatedTerritories);
+        upsertTerritories([result.data]);
         console.log(`✅ TerritoryContext: Successfully updated activity for territory: ${cellId}`);
         return result.data;
       } else {
@@ -168,32 +200,42 @@ export const TerritoryProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('❌ TerritoryContext: Failed to update territory activity:', err.message);
-      throw err;
+      const responseMessage = err?.response?.data?.error;
+      const meta = err?.response?.data?.meta;
+      const error = new Error(responseMessage || err.message || 'Failed to update territory activity');
+      if (meta) {
+        error.meta = meta;
+      }
+      throw error;
     }
   };
 
   // Get territory status by cell ID
-  const getTerritoryStatus = (cellId) => {
-    const territory = territories.find(t => t.cellId === cellId);
+  const getTerritoryStatus = useCallback((cellId) => {
+    const territory = cellId ? territoryMap[cellId] : null;
     return territory ? territory.status : 'unclaimed';
-  };
+  }, [territoryMap]);
 
   // Get territory by cell ID from local state
-  const getLocalTerritory = (cellId) => {
-    return territories.find(t => t.cellId === cellId);
-  };
+  const getLocalTerritory = useCallback((cellId) => {
+    return cellId ? territoryMap[cellId] || null : null;
+  }, [territoryMap]);
 
   // Check if territory is claimed by user
-  const isClaimedByUser = (cellId, userId) => {
-    const territory = territories.find(t => t.cellId === cellId);
-    return territory && territory.claimedBy && territory.claimedBy._id === userId;
-  };
+  const isClaimedByUser = useCallback((cellId, userId) => {
+    if (!cellId || !userId) return false;
+    const territory = territoryMap[cellId];
+    if (!territory || !territory.claimedBy) return false;
+
+    const claimantId = territory.claimedBy._id || territory.claimedBy;
+    return claimantId?.toString() === userId?.toString();
+  }, [territoryMap]);
 
   // Clear territories
-  const clearTerritories = () => {
-    setTerritories([]);
+  const clearTerritories = useCallback(() => {
+    setTerritoryMap({});
     setError(null);
-  };
+  }, []);
 
   const value = {
     territories,
@@ -208,7 +250,9 @@ export const TerritoryProvider = ({ children }) => {
     getTerritoryStatus,
     getLocalTerritory,
     isClaimedByUser,
-    clearTerritories
+    clearTerritories,
+    upsertTerritories,
+    removeTerritory,
   };
 
   return (
@@ -218,7 +262,6 @@ export const TerritoryProvider = ({ children }) => {
   );
 };
 
-// Custom hook to use territory context
 export const useTerritories = () => {
   const context = useContext(TerritoryContext);
   if (!context) {

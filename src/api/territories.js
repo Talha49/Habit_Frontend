@@ -35,21 +35,43 @@ territoryAPI.interceptors.response.use(
 );
 
 // Get territories by location and category
-export const getTerritories = async (latitude, longitude, categoryId = null, radius = 0.01) => {
+export const getTerritories = async (options = {}) => {
   try {
     console.log('🗺️ Fetching territories from API...');
-    const params = {
+
+    const {
       latitude,
       longitude,
-      radius
-    };
-    
+      radius,
+      categoryId,
+      scope,
+      status,
+    } = options;
+
+    const params = {};
+
+    if (typeof latitude === 'number' && typeof longitude === 'number') {
+      params.latitude = latitude;
+      params.longitude = longitude;
+      if (typeof radius === 'number') {
+        params.radius = radius;
+      }
+    }
+
     if (categoryId) {
       params.categoryId = categoryId;
     }
 
+    if (scope) {
+      params.scope = scope;
+    }
+
+    if (status) {
+      params.status = status;
+    }
+
     const response = await territoryAPI.get('/', { params });
-    
+
     if (response.data.success) {
       console.log(`✅ Successfully fetched ${response.data.count} territories`);
       return response.data;
@@ -67,7 +89,7 @@ export const getTerritoryByCellId = async (cellId) => {
   try {
     console.log(`🗺️ Fetching territory by cell ID: ${cellId}`);
     const response = await territoryAPI.get(`/${cellId}`);
-    
+
     if (response.data.success) {
       console.log(`✅ Successfully fetched territory: ${cellId}`);
       return response.data;
@@ -91,7 +113,7 @@ export const claimTerritory = async (cellId, categoryId, userId, latitude, longi
       latitude,
       longitude
     });
-    
+
     if (response.data.success) {
       console.log(`✅ Successfully claimed territory: ${cellId}`);
       return response.data;
@@ -112,7 +134,7 @@ export const releaseTerritory = async (cellId, userId) => {
       cellId,
       userId
     });
-    
+
     if (response.data.success) {
       console.log(`✅ Successfully released territory: ${cellId}`);
       return response.data;
@@ -133,7 +155,7 @@ export const updateTerritoryActivity = async (cellId, userId) => {
       cellId,
       userId
     });
-    
+
     if (response.data.success) {
       console.log(`✅ Successfully updated territory activity: ${cellId}`);
       return response.data;

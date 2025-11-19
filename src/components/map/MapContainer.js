@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { StyleSheet, View, Dimensions, ActivityIndicator } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { LocationContext } from '../../context/LocationContext';
@@ -6,10 +6,19 @@ import { colors } from '../../config/colors';
 
 const { width, height } = Dimensions.get('window');
 
-const MapContainer = ({ children }) => {
+const MapContainer = forwardRef(({ children }, ref) => {
   const mapRef = useRef(null);
   const { currentLocation, isLoading } = useContext(LocationContext);
   const [isMapReady, setIsMapReady] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    animateToRegion: (region, duration) => {
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(region, duration);
+      }
+    },
+    getMap: () => mapRef.current,
+  }));
 
   useEffect(() => {
     if (currentLocation && mapRef.current && isMapReady) {
@@ -74,7 +83,7 @@ const MapContainer = ({ children }) => {
       </MapView>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

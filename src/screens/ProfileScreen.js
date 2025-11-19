@@ -1,11 +1,12 @@
 
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
 import Button from '../components/Button';
 import { colors } from '../config/colors';
 import Input from '../components/Input';
+import GeoZoneManager from '../components/map/GeoZoneManager';
 
 const ProfileScreen = () => {
   const { 
@@ -16,7 +17,8 @@ const ProfileScreen = () => {
     createLinkInvite,
     acceptLinkInvite,
     revokeLink,
-    loadUserLinks
+    loadUserLinks,
+    getAuthToken,
   } = useContext(AuthContext);
   const [sessionTimeLeft, setSessionTimeLeft] = useState('');
   const [links, setLinks] = useState([]);
@@ -25,6 +27,17 @@ const ProfileScreen = () => {
   const [linkError, setLinkError] = useState('');
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [workingAction, setWorkingAction] = useState(null);
+
+  const childOptions = useMemo(() => {
+    if (!Array.isArray(links) || !user) return [];
+    return links
+      .filter(link => link.linkType === 'parent-child' && link.status === 'active' && link.initiator?.id === user.id && link.linkedUser)
+      .map(link => ({
+        id: link.linkedUser.id,
+        name: link.linkedUser.fullName,
+        email: link.linkedUser.email,
+      }));
+  }, [links, user]);
 
   useEffect(() => {
     if (user) {
@@ -352,6 +365,13 @@ const ProfileScreen = () => {
             )}
           </View>
         </View>
+
+        {user.role === 'parent' && (
+          <GeoZoneManager
+            getAuthToken={getAuthToken}
+            childrenOptions={childOptions}
+          />
+        )}
 
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>

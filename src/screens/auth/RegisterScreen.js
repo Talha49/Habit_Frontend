@@ -1,13 +1,18 @@
 
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { colors } from '../../config/colors';
+import { useOAuth } from '@clerk/clerk-expo';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const RegisterScreen = ({ navigation }) => {
-  const { register } = useContext(AuthContext);
+  const { register, clerkLinkMeta, clearClerkLinkMeta } = useContext(AuthContext);
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
@@ -20,6 +25,8 @@ const RegisterScreen = ({ navigation }) => {
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
 
   const roleOptions = [
     { value: 'child', label: 'Player', description: 'Standard account for everyday use' },
@@ -175,6 +182,41 @@ const RegisterScreen = ({ navigation }) => {
     }
   };
 
+  const handleGoogleSignUp = useCallback(async () => {
+    setGoogleLoading(true);
+    try {
+      const redirectUrl = makeRedirectUri({ scheme: 'habittracker' });
+      const { createdSessionId, setActive, signIn, signUp } = await startOAuthFlow({ redirectUrl });
+
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+        return;
+      }
+
+      if (signIn || signUp) {
+        Alert.alert(
+          'Additional Steps Required',
+          'Please complete sign-up in the opened browser window.'
+        );
+      }
+    } catch (error) {
+      console.error('❌ Google sign-up failed:', error);
+      Alert.alert('Google Sign-Up Failed', error?.message || 'Unable to complete Google sign-up. Please try again.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [startOAuthFlow]);
+
+  useEffect(() => {
+    if (clerkLinkMeta?.wasLinked) {
+      Alert.alert(
+        'Account already exists',
+        'We found an existing account with this email and linked it to your Google sign-in. You can continue with your existing profile.'
+      );
+      clearClerkLinkMeta();
+    }
+  }, [clerkLinkMeta, clearClerkLinkMeta]);
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -192,124 +234,138 @@ const RegisterScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.form}>
-        <Input
-          label="Full Name"
-          placeholder="Enter your full name"
-          value={form.fullName}
-          onChangeText={(value) => handleChange('fullName', value)}
-          onBlur={() => handleBlur('fullName')}
-          error={touched.fullName ? errors.fullName : ''}
-          maxLength={50}
-          autoCapitalize="words"
-        />
+            <Button
+              title="Continue with Google"
+              onPress={handleGoogleSignUp}
+              loading={googleLoading}
+              variant="secondary"
+              style={styles.googleButton}
+            />
 
-        <Input
-          label="Phone Number"
-          placeholder="Enter your phone number"
-          value={form.phone}
-          onChangeText={(value) => handleChange('phone', value)}
-          onBlur={() => handleBlur('phone')}
-          error={touched.phone ? errors.phone : ''}
-          keyboardType="phone-pad"
-          maxLength={15}
-        />
+            <View style={styles.dividerContainer}>
+              <View style={styles.divider} />
+              <Text style={styles.dividerText}>or continue with email</Text>
+              <View style={styles.divider} />
+            </View>
 
-        <Input
-          label="Email Address"
-          placeholder="Enter your email address"
-          value={form.email}
-          onChangeText={(value) => handleChange('email', value)}
-          onBlur={() => handleBlur('email')}
-          error={touched.email ? errors.email : ''}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+            <Input
+              label="Full Name"
+              placeholder="Enter your full name"
+              value={form.fullName}
+              onChangeText={(value) => handleChange('fullName', value)}
+              onBlur={() => handleBlur('fullName')}
+              error={touched.fullName ? errors.fullName : ''}
+              maxLength={50}
+              autoCapitalize="words"
+            />
 
-        <Input
-          label="Professional Field"
-          placeholder="e.g., Software Engineer, Doctor, Teacher"
-          value={form.professional}
-          onChangeText={(value) => handleChange('professional', value)}
-          onBlur={() => handleBlur('professional')}
-          error={touched.professional ? errors.professional : ''}
-          maxLength={100}
-          autoCapitalize="words"
-        />
+            <Input
+              label="Phone Number"
+              placeholder="Enter your phone number"
+              value={form.phone}
+              onChangeText={(value) => handleChange('phone', value)}
+              onBlur={() => handleBlur('phone')}
+              error={touched.phone ? errors.phone : ''}
+              keyboardType="phone-pad"
+              maxLength={15}
+            />
 
-        <View style={styles.roleSection}>
-          <Text style={styles.roleLabel}>Account Role</Text>
-          <View style={styles.roleOptions}>
-            {roleOptions.map(option => {
-              const isSelected = form.role === option.value;
-              return (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[
-                    styles.roleOption,
-                    isSelected && styles.roleOptionSelected
-                  ]}
-                  onPress={() => handleRoleSelect(option.value)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[
-                    styles.roleOptionTitle,
-                    isSelected && styles.roleOptionTitleSelected
-                  ]}>
-                    {option.label}
-                  </Text>
-                  <Text style={[
-                    styles.roleOptionDescription,
-                    isSelected && styles.roleOptionDescriptionSelected
-                  ]}>
-                    {option.description}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {touched.role && errors.role ? (
-            <Text style={styles.roleError}>{errors.role}</Text>
-          ) : null}
-        </View>
+            <Input
+              label="Email Address"
+              placeholder="Enter your email address"
+              value={form.email}
+              onChangeText={(value) => handleChange('email', value)}
+              onBlur={() => handleBlur('email')}
+              error={touched.email ? errors.email : ''}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
 
-        <Input
-          label="Password"
-          placeholder="Create a strong password"
-          value={form.password}
-          onChangeText={(value) => handleChange('password', value)}
-          onBlur={() => handleBlur('password')}
-          error={touched.password ? errors.password : ''}
-          secureTextEntry
-          showPasswordToggle
-          maxLength={20}
-        />
+            <Input
+              label="Professional Field"
+              placeholder="e.g., Software Engineer, Doctor, Teacher"
+              value={form.professional}
+              onChangeText={(value) => handleChange('professional', value)}
+              onBlur={() => handleBlur('professional')}
+              error={touched.professional ? errors.professional : ''}
+              maxLength={100}
+              autoCapitalize="words"
+            />
 
-        <Input
-          label="Confirm Password"
-          placeholder="Confirm your password"
-          value={form.confirmPassword}
-          onChangeText={(value) => handleChange('confirmPassword', value)}
-          onBlur={() => handleBlur('confirmPassword')}
-          error={touched.confirmPassword ? errors.confirmPassword : ''}
-          secureTextEntry
-          showPasswordToggle
-          maxLength={20}
-        />
+            <View style={styles.roleSection}>
+              <Text style={styles.roleLabel}>Account Role</Text>
+              <View style={styles.roleOptions}>
+                {roleOptions.map(option => {
+                  const isSelected = form.role === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.roleOption,
+                        isSelected && styles.roleOptionSelected
+                      ]}
+                      onPress={() => handleRoleSelect(option.value)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[
+                        styles.roleOptionTitle,
+                        isSelected && styles.roleOptionTitleSelected
+                      ]}>
+                        {option.label}
+                      </Text>
+                      <Text style={[
+                        styles.roleOptionDescription,
+                        isSelected && styles.roleOptionDescriptionSelected
+                      ]}>
+                        {option.description}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {touched.role && errors.role ? (
+                <Text style={styles.roleError}>{errors.role}</Text>
+              ) : null}
+            </View>
 
-        <Button
-          title="Create Account"
-          onPress={handleRegister}
-          loading={loading}
-          style={styles.registerButton}
-        />
+            <Input
+              label="Password"
+              placeholder="Create a strong password"
+              value={form.password}
+              onChangeText={(value) => handleChange('password', value)}
+              onBlur={() => handleBlur('password')}
+              error={touched.password ? errors.password : ''}
+              secureTextEntry
+              showPasswordToggle
+              maxLength={20}
+            />
 
-        <Button
-          title="Already have an account? Sign In"
-          onPress={() => navigation.navigate('Login')}
-          variant="ghost"
-          style={styles.loginLink}
-        />
+            <Input
+              label="Confirm Password"
+              placeholder="Confirm your password"
+              value={form.confirmPassword}
+              onChangeText={(value) => handleChange('confirmPassword', value)}
+              onBlur={() => handleBlur('confirmPassword')}
+              error={touched.confirmPassword ? errors.confirmPassword : ''}
+              secureTextEntry
+              showPasswordToggle
+              maxLength={20}
+            />
+
+            <Button
+              title="Create Account"
+              onPress={handleRegister}
+              loading={loading}
+              style={styles.registerButton}
+            />
+
+            <Button
+              title="Already have an account? Sign In"
+              onPress={() => navigation.navigate('Login')}
+              variant="ghost"
+              style={styles.loginLink}
+            />
           </View>
         </View>
       </ScrollView>
@@ -401,6 +457,26 @@ const styles = StyleSheet.create({
   registerButton: {
     marginTop: 24,
     marginBottom: 16,
+  },
+  googleButton: {
+    marginBottom: 24,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+    gap: 12,
+  },
+  divider: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border.medium,
+  },
+  dividerText: {
+    color: colors.text.secondary,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   loginLink: {
     marginTop: 16,

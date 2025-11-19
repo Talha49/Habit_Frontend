@@ -24,7 +24,6 @@ const AppNavigator = () => {
         initialRouteName="Login"
       >
         {user ? (
-          // User is authenticated - show main app
           <Stack.Screen name="Main" component={TabNavigator} />
         ) : (
           // User is not authenticated - show auth flow starting with Login
